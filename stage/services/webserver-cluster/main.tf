@@ -7,11 +7,11 @@ resource "aws_launch_configuration" "example" {
   instance_type   = "t2.micro"
   security_groups = [aws_security_group.instance.id]
 
-  user_data = <<-EOF
-              #!/bin/bash
-              echo "Hello, World" > index.html
-              nohup busybox httpd -f -p ${var.server_port} &
-              EOF
+  user_data = templatefile("user-data.sh", {
+      server_port = var.server_port
+      db_address = data.terraform_remote_state.db.outputs.address
+      db_port = data.terraform_remote_state.db.outputs.port
+    })
 
   lifecycle {
     create_before_destroy = true
@@ -118,6 +118,27 @@ resource "aws_lb_listener_rule" "asg" {
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.asg.arn
+  }
+}
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
+
+data "terraform_remote_state" "db" {
+  backend = "s3"
+
+  config = {
+    bucket = "terraform-up-and-running-state-benchanjamin-123"
+    key = "stage/data-stores/mysql/terraform.tfstate"
+    region = "us-east-2"
   }
 }
 
